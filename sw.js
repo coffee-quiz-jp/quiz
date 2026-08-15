@@ -1,6 +1,6 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
-   v25: パスコード保護版（平文の app.jsx / assets.js を廃止し、暗号化した .enc を配信） */
-const CACHE = "bp-cache-v25";
+   v26: 本番用合言葉に変更 */
+const CACHE = "bp-cache-v26";
 const LOCAL = ["./index.html", "./app.enc", "./assets.enc", "./manifest.webmanifest",
                "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png"];
 const CDN = [
