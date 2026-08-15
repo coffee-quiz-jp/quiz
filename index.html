@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Black Apron 対策</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1c130b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Black Apron">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  html,body{margin:0;padding:0;background:#1c130b;color:#f3e9d9;-webkit-text-size-adjust:100%;}
+  #root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+  #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        background:#1c130b;font-family:-apple-system,BlinkMacSystemFont,sans-serif;gap:14px;z-index:9999;
+        padding:24px;box-sizing:border-box;}
+  #boot .e{font-size:11px;letter-spacing:.28em;color:#c9954e;font-weight:700;}
+  #boot .m{font-size:13px;color:#a98d6a;text-align:center;line-height:1.7;}
+  #boot .sp{width:26px;height:26px;border:3px solid #4a361d;border-top-color:#c9954e;border-radius:50%;
+            animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #lock{display:none;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:300px;}
+  #lock input{width:100%;box-sizing:border-box;background:#2b1e11;border:1.5px solid #6b4f27;border-radius:12px;
+              color:#f3e9d9;font-size:16px;padding:13px 14px;text-align:center;letter-spacing:.1em;outline:none;}
+  #lock input:focus{border-color:#c9954e;}
+  #lock button{width:100%;background:#c9954e;color:#20150a;border:none;border-radius:12px;
+               padding:14px;font-size:15px;font-weight:700;cursor:pointer;}
+  #lock button:disabled{opacity:.5;}
+  #lockerr{font-size:12px;color:#e08b6d;min-height:16px;text-align:center;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="boot">
+  <div class="e">BLACK APRON</div>
+  <div class="sp" id="bootsp"></div>
+  <div class="m" id="bootmsg">読み込み中…</div>
+  <div id="lock">
+    <input id="passinput" type="password" placeholder="合言葉を入力" autocomplete="off"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button id="passbtn">開く</button>
+    <div id="lockerr"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+(function () {
+  var BUILD = "25";                       // 中身を更新したら +1（sw.js の CACHE も揃えて上げる）
+  var CKEY  = "bp_compiled_" + BUILD;     // 変換済みコードのキャッシュ
+  var KKEY  = "bp_key_v1";                // 解錠済みの鍵（この端末のみ）
+  var ITER  = 310000;
+
+  var msg   = document.getElementById("bootmsg");
+  var boot  = document.getElementById("boot");
+  var sp    = document.getElementById("bootsp");
+  var lock  = document.getElementById("lock");
+  var input = document.getElementById("passinput");
+  var btn   = document.getElementById("passbtn");
+  var lerr  = document.getElementById("lockerr");
+
+  function say(t) { if (msg) msg.textContent = t; }
+  function fail(t) {
+    boot.innerHTML = '<div style="padding:24px;color:#e6c98d;font-size:13px;line-height:1.7;text-align:center">'
+      + '起動できませんでした<br><span style="color:#a98d6a">' + t + '</span></div>';
+  }
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      var s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = function () { rej(new Error(src)); };
+      document.head.appendChild(s);
+    });
+  }
+  function run(code) { new Function(code)(); }
+
+  /* ---- 暗号まわり ---- */
+  function parseEnc(buf) {
+    var u = new Uint8Array(buf);
+    if (u.length < 33 || u[0] !== 66 || u[1] !== 80 || u[2] !== 69 || u[3] !== 49) // "BPE1"
+      throw new Error("暗号化ファイルの形式が不正です");
+    return { salt: u.slice(4, 20), iv: u.slice(20, 32), ct: u.slice(32) };
+  }
+  function deriveKey(pass, salt) {
+    return crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(function (bk) {
+        return crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt: salt, iterations: ITER, hash: "SHA-256" },
+          bk, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+      });
+  }
+  function importStoredKey() {
+    try {
+      var b64 = localStorage.getItem(KKEY);
+      if (!b64) return Promise.resolve(null);
+      var raw = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+      return crypto.subtle.importKey("raw", raw, "AES-GCM", true, ["encrypt", "decrypt"])
+        .catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+  function storeKey(key) {
+    return crypto.subtle.exportKey("raw", key).then(function (raw) {
+      try {
+        var b = ""; var u = new Uint8Array(raw);
+        for (var i = 0; i < u.length; i++) b += String.fromCharCode(u[i]);
+        localStorage.setItem(KKEY, btoa(b));
+      } catch (e) {}
+    });
+  }
+  function decrypt(key, encBuf) {
+    var p = parseEnc(encBuf);
+    return crypto.subtle.decrypt({ name: "AES-GCM", iv: p.iv }, key, p.ct)
+      .then(function (plain) { return new TextDecoder().decode(plain); });
+  }
+  function askPass(errText) {
+    sp.style.display = "none";
+    say("このアプリはパスコードで保護されています");
+    lock.style.display = "flex";
+    lerr.textContent = errText || "";
+    input.value = ""; input.focus();
+    return new Promise(function (res) {
+      function go() {
+        var v = input.value.trim();
+        if (!v) return;
+        btn.removeEventListener("click", go);
+        input.removeEventListener("keydown", onkey);
+        lock.style.display = "none";
+        sp.style.display = "";
+        res(v);
+      }
+      function onkey(e) { if (e.key === "Enter") go(); }
+      btn.addEventListener("click", go);
+      input.addEventListener("keydown", onkey);
+    });
+  }
+
+  (async function () {
+    try {
+      if (!(window.crypto && crypto.subtle))
+        return fail("この環境では暗号機能が使えません（HTTPSで開いてください）");
+
+      var res1 = await fetch("app.enc", { cache: "force-cache" });
+      var res2 = await fetch("assets.enc", { cache: "force-cache" });
+      if (!res1.ok || !res2.ok) throw new Error("暗号化データを取得できませんでした");
+      var appEnc = await res1.arrayBuffer();
+      var assetsEnc = await res2.arrayBuffer();
+      var salt = parseEnc(appEnc).salt;
+
+      /* 鍵の用意：保存済みならそれを使い、なければ合言葉から導出。
+         復号に失敗したら（合言葉違い・変更後など）入力し直し。 */
+      var key = await importStoredKey();
+      var assetsText = null, errText = "";
+      for (;;) {
+        if (!key) {
+          var pass = await askPass(errText);
+          say("確認しています…");
+          key = await deriveKey(pass, salt);
+        }
+        try { assetsText = await decrypt(key, assetsEnc); break; }
+        catch (e) {
+          try { localStorage.removeItem(KKEY); } catch (e2) {}
+          key = null; errText = "合言葉が違います";
+        }
+      }
+      await storeKey(key);
+
+      run(assetsText);          // window.__IMG を定義
+      assetsText = null;
+
+      /* 2回目以降：変換済みコードがあれば Babel を読まずに即起動 */
+      var cached = null;
+      try { cached = localStorage.getItem(CKEY); } catch (e) {}
+      if (cached) {
+        try { run(cached); boot.remove(); return; }
+        catch (e) { try { localStorage.removeItem(CKEY); } catch (e2) {} }
+      }
+
+      say("問題データを準備中…");
+      var src = await decrypt(key, appEnc);
+
+      say("初回のみ変換中（20秒ほど）…");
+      if (typeof Babel === "undefined") await loadScript("https://unpkg.com/@babel/standalone@7.24.7/babel.min.js");
+      var out = Babel.transform(src, { presets: ["react"], compact: false }).code;
+      try { localStorage.setItem(CKEY, out); } catch (e) {}
+      run(out);
+      boot.remove();
+    } catch (e) {
+      fail(String(e && e.message ? e.message : e));
+    }
+  })();
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
