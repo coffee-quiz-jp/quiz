@@ -50,9 +50,9 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script>
 (function () {
-  var BUILD = "33";                       // 中身を更新したら +1（sw.js の CACHE も揃えて上げる）
-  var CKEY  = "bp_compiled_" + BUILD;     // 変換済みコードのキャッシュ
+  var BUILD = "36";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
   var KKEY  = "bp_key_v1";                // 解錠済みの鍵（この端末のみ）
+  var CPRE  = "bp_compiled_";             // 変換済みコードのキャッシュ（中身のハッシュで管理）
   var ITER  = 310000;
 
   var msg   = document.getElementById("bootmsg");
@@ -115,6 +115,21 @@
     return crypto.subtle.decrypt({ name: "AES-GCM", iv: p.iv }, key, p.ct)
       .then(function (plain) { return new TextDecoder().decode(plain); });
   }
+  /* 中身そのものから鍵をつくる。取得したデータと変換結果が食い違わないようにするため */
+  function sourceHash(text) {
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (h) {
+      var u = new Uint8Array(h), o = "";
+      for (var i = 0; i < 8; i++) o += ("0" + u[i].toString(16)).slice(-2);
+      return o;
+    });
+  }
+  function pruneCompiled(keep) {
+    try {
+      Object.keys(localStorage).forEach(function (k) {
+        if (k.indexOf(CPRE) === 0 && k !== keep) localStorage.removeItem(k);
+      });
+    } catch (e) {}
+  }
   function askPass(errText) {
     sp.style.display = "none";
     say("このアプリはパスコードで保護されています");
@@ -142,9 +157,12 @@
       if (!(window.crypto && crypto.subtle))
         return fail("この環境では暗号機能が使えません（HTTPSで開いてください）");
 
-      var res1 = await fetch("app.enc", { cache: "force-cache" });
-      var res2 = await fetch("assets.enc", { cache: "force-cache" });
-      if (!res1.ok || !res2.ok) throw new Error("暗号化データを取得できませんでした");
+      /* URLに版番号を付ける。付けないと古いキャッシュがそのまま返ってきて、
+         中身だけ前のまま…という状態になる */
+      var q = "?v=" + BUILD;
+      var res1 = await fetch("app.enc" + q);
+      var res2 = await fetch("assets.enc" + q);
+      if (!res1.ok || !res2.ok) throw new Error("データを取得できませんでした");
       var appEnc = await res1.arrayBuffer();
       var assetsEnc = await res2.arrayBuffer();
       var salt = parseEnc(appEnc).salt;
@@ -162,7 +180,7 @@
         try { assetsText = await decrypt(key, assetsEnc); break; }
         catch (e) {
           try { localStorage.removeItem(KKEY); } catch (e2) {}
-          key = null; errText = "合言葉が違います";
+          key = null; errText = errText ? "合言葉が違います" : "";
         }
       }
       await storeKey(key);
@@ -170,20 +188,22 @@
       run(assetsText);          // window.__IMG を定義
       assetsText = null;
 
-      /* 2回目以降：変換済みコードがあれば Babel を読まずに即起動 */
+      say("問題データを準備中…");
+      var src = await decrypt(key, appEnc);
+      var CKEY = CPRE + (await sourceHash(src));
+
+      /* 同じ中身を前にも変換していれば、Babelを読まずに即起動 */
       var cached = null;
       try { cached = localStorage.getItem(CKEY); } catch (e) {}
       if (cached) {
-        try { run(cached); boot.remove(); return; }
+        try { run(cached); pruneCompiled(CKEY); boot.remove(); return; }
         catch (e) { try { localStorage.removeItem(CKEY); } catch (e2) {} }
       }
-
-      say("問題データを準備中…");
-      var src = await decrypt(key, appEnc);
 
       say("初回のみ変換中（20秒ほど）…");
       if (typeof Babel === "undefined") await loadScript("https://unpkg.com/@babel/standalone@7.24.7/babel.min.js");
       var out = Babel.transform(src, { presets: ["react"], compact: false }).code;
+      pruneCompiled(CKEY);
       try { localStorage.setItem(CKEY, out); } catch (e) {}
       run(out);
       boot.remove();

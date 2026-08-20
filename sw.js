@@ -1,6 +1,7 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
-   v33: 自動生成ドリルに本番形式を追加 */
-const CACHE = "bp-cache-v33";
+   v36: 問題データ(.enc)はネット優先に変更。
+        キャッシュ優先のままだと、内容を更新しても端末に古いデータが残り続けるため */
+const CACHE = "bp-cache-v36";
 const LOCAL = ["./index.html", "./app.enc", "./assets.enc", "./manifest.webmanifest",
                "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png"];
 const CDN = [
@@ -55,6 +56,25 @@ self.addEventListener("fetch", (e) => {
         return res;
       } catch (err) {
         const hit = await caches.match("./index.html", { ignoreVary: true });
+        return hit || Response.error();
+      }
+    })());
+    return;
+  }
+
+  /* 問題データはネット優先（つながらない時だけキャッシュを使う）。
+     URLの ?v=... が変わってもキャッシュを引けるよう ignoreSearch で照合する */
+  if (url.pathname.endsWith(".enc")) {
+    e.respondWith((async () => {
+      try {
+        const res = await fetch(req);
+        if (cacheable(res)) {
+          const c = await caches.open(CACHE);
+          c.put(url.origin + url.pathname, res.clone()).catch(() => {});
+        }
+        return res;
+      } catch (err) {
+        const hit = await caches.match(req, { ignoreVary: true, ignoreSearch: true });
         return hit || Response.error();
       }
     })());
