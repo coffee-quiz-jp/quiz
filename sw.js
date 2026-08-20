@@ -1,6 +1,6 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
-   v26: 本番用合言葉に変更 */
-const CACHE = "bp-cache-v26";
+   v33: 自動生成ドリルに本番形式を追加 */
+const CACHE = "bp-cache-v33";
 const LOCAL = ["./index.html", "./app.enc", "./assets.enc", "./manifest.webmanifest",
                "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png"];
 const CDN = [
