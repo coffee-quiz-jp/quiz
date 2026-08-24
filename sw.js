@@ -1,7 +1,7 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
-   v51: 合言葉エラー表示の修正。問題データ(.enc)はネット優先。
+   v54: 文章正誤の重複防止。問題データ(.enc)はネット優先。
         キャッシュ優先のままだと、内容を更新しても端末に古いデータが残り続けるため */
-const CACHE = "bp-cache-v51";
+const CACHE = "bp-cache-v54";
 const LOCAL = ["./index.html", "./app.enc", "./assets.enc", "./manifest.webmanifest",
                "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png"];
 const CDN = [
