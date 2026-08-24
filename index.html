@@ -50,7 +50,7 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script>
 (function () {
-  var BUILD = "36";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  var BUILD = "51";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
   var KKEY  = "bp_key_v1";                // 解錠済みの鍵（この端末のみ）
   var CPRE  = "bp_compiled_";             // 変換済みコードのキャッシュ（中身のハッシュで管理）
   var ITER  = 310000;
@@ -170,17 +170,20 @@
       /* 鍵の用意：保存済みならそれを使い、なければ合言葉から導出。
          復号に失敗したら（合言葉違い・変更後など）入力し直し。 */
       var key = await importStoredKey();
-      var assetsText = null, errText = "";
+      var assetsText = null, errText = "", typed = false;
       for (;;) {
         if (!key) {
           var pass = await askPass(errText);
           say("確認しています…");
           key = await deriveKey(pass, salt);
+          typed = true;   // ここから先の失敗は「入力した合言葉が違う」
         }
         try { assetsText = await decrypt(key, assetsEnc); break; }
         catch (e) {
           try { localStorage.removeItem(KKEY); } catch (e2) {}
-          key = null; errText = errText ? "合言葉が違います" : "";
+          /* 保存済みの鍵が合わなかっただけ（合言葉変更後の初回など）なら
+             エラー表示なしで入力を求める。入力した合言葉が違ったときだけ表示する */
+          key = null; errText = typed ? "合言葉が違います" : "";
         }
       }
       await storeKey(key);
