@@ -46,11 +46,35 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"
+        integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+        integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"
+        crossorigin="anonymous"></script>
 <script>
 (function () {
-  var BUILD = "99";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  var BUILD = "102";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  window.__BUILD = BUILD;                 // アプリ内のフッターに出す（古い版を掴んでいないか確認用）
+
+  /* テーマ（茶／緑）に合わせて、アプリの外側（ステータスバー・safe-area・オーバースクロール域）も塗る。
+     緑テーマは背景が明るいので、black-translucent のままだと白文字のステータスバーが読めなくなる */
+  window.__applyShellTheme = function (t) {
+    var green = t === "green";
+    var bg = green ? "#f2f7f4" : "#1c130b";
+    var fg = green ? "#1e3932" : "#f3e9d9";
+    try {
+      document.documentElement.style.background = bg;
+      if (document.body) { document.body.style.background = bg; document.body.style.color = fg; }
+      var boot = document.getElementById("boot");
+      if (boot) { boot.style.background = bg; boot.style.color = fg; }
+      var tc = document.querySelector('meta[name="theme-color"]');
+      if (tc) tc.setAttribute("content", bg);
+      var sb = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (sb) sb.setAttribute("content", green ? "default" : "black-translucent");
+    } catch (e) {}
+  };
+  try { window.__applyShellTheme(localStorage.getItem("bp-theme") === "green" ? "green" : "brown"); } catch (e) {}
   var KKEY  = "bp_key_v1";                // 解錠済みの鍵（この端末のみ）
   var CPRE  = "bp_compiled_";             // 変換済みコードのキャッシュ（中身のハッシュで管理）
   var ITER  = 310000;
@@ -67,13 +91,6 @@
   function fail(t) {
     boot.innerHTML = '<div style="padding:24px;color:#e6c98d;font-size:13px;line-height:1.7;text-align:center">'
       + '起動できませんでした<br><span style="color:#a98d6a">' + t + '</span></div>';
-  }
-  function loadScript(src) {
-    return new Promise(function (res, rej) {
-      var s = document.createElement("script");
-      s.src = src; s.onload = res; s.onerror = function () { rej(new Error(src)); };
-      document.head.appendChild(s);
-    });
   }
   function run(code) { new Function(code)(); }
 
@@ -114,14 +131,6 @@
     var p = parseEnc(encBuf);
     return crypto.subtle.decrypt({ name: "AES-GCM", iv: p.iv }, key, p.ct)
       .then(function (plain) { return new TextDecoder().decode(plain); });
-  }
-  /* 中身そのものから鍵をつくる。取得したデータと変換結果が食い違わないようにするため */
-  function sourceHash(text) {
-    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (h) {
-      var u = new Uint8Array(h), o = "";
-      for (var i = 0; i < 8; i++) o += ("0" + u[i].toString(16)).slice(-2);
-      return o;
-    });
   }
   function pruneCompiled(keep) {
     try {
@@ -192,23 +201,13 @@
       assetsText = null;
 
       say("問題データを準備中…");
+      /* app.enc の中身は変換済みのJS（手元で esbuild にかけたもの）。
+         以前はここでJSXをBabelに変換させていたが、
+         ①初回20秒の待ち ②変換結果1.4MBをlocalStorageに常駐 ③3つ目のCDN依存
+         がまとめて消えるので、変換は手元で済ませる方式にした（2026-09-09） */
       var src = await decrypt(key, appEnc);
-      var CKEY = CPRE + (await sourceHash(src));
-
-      /* 同じ中身を前にも変換していれば、Babelを読まずに即起動 */
-      var cached = null;
-      try { cached = localStorage.getItem(CKEY); } catch (e) {}
-      if (cached) {
-        try { run(cached); pruneCompiled(CKEY); boot.remove(); return; }
-        catch (e) { try { localStorage.removeItem(CKEY); } catch (e2) {} }
-      }
-
-      say("初回のみ変換中（20秒ほど）…");
-      if (typeof Babel === "undefined") await loadScript("https://unpkg.com/@babel/standalone@7.24.7/babel.min.js");
-      var out = Babel.transform(src, { presets: ["react"], compact: false }).code;
-      pruneCompiled(CKEY);
-      try { localStorage.setItem(CKEY, out); } catch (e) {}
-      run(out);
+      pruneCompiled(null);   // 旧方式が残した bp_compiled_* を掃除する
+      run(src);
       boot.remove();
     } catch (e) {
       fail(String(e && e.message ? e.message : e));

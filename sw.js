@@ -1,13 +1,17 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
    v60: 新形式5種を追加。問題データ(.enc)はネット優先。
         キャッシュ優先のままだと、内容を更新しても端末に古いデータが残り続けるため */
-const CACHE = "bp-cache-v99";
-const LOCAL = ["./index.html", "./app.enc", "./assets.enc", "./manifest.webmanifest",
+const CACHE = "bp-cache-v102";
+/* .enc はここに入れない。index.html が "app.enc?v=BUILD" で取り、
+   ネット優先ハンドラが実際に取れたものをオフライン用に保存する。
+   ここで版クエリ無しに取ると別URL扱いになり、更新のたび2.7MBを二重にダウンロードしていた */
+const LOCAL = ["./index.html", "./manifest.webmanifest",
                "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png"];
+/* Babel は不要になった（app.enc の中身が変換済みJSのため）。
+   キャッシュに残っている旧世代は activate の掃除で CACHE ごと消える */
 const CDN = [
   "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
   "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js",
-  "https://unpkg.com/@babel/standalone@7.24.7/babel.min.js",
 ];
 
 /* 保存してよいレスポンスか（リダイレクト・エラー・認証画面は保存しない） */
@@ -19,7 +23,8 @@ self.addEventListener("install", (e) => {
     const c = await caches.open(CACHE);
     await Promise.all([...LOCAL, ...CDN].map(async (u) => {
       try {
-        const res = await fetch(u);
+        // cache:"reload" でブラウザのHTTPキャッシュを迂回し、必ず最新を取る
+        const res = await fetch(u, { cache: "reload" });
         if (cacheable(res)) await c.put(u, res);
       } catch (err) {}
     }));
