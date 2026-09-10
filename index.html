@@ -17,8 +17,9 @@
   #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
         background:#1c130b;font-family:-apple-system,BlinkMacSystemFont,sans-serif;gap:14px;z-index:9999;
         padding:24px;box-sizing:border-box;}
-  #boot .e{font-size:11px;letter-spacing:.28em;color:#c9954e;font-weight:700;}
-  #boot .m{font-size:13px;color:#a98d6a;text-align:center;line-height:1.7;}
+  :root{--boot-eye:#c9954e;--boot-sub:#a98d6a;--boot-err:#e08b6d;--boot-fg:#e6c98d;}
+  #boot .e{font-size:11px;letter-spacing:.28em;color:var(--boot-eye);font-weight:700;}
+  #boot .m{font-size:13px;color:var(--boot-sub);text-align:center;line-height:1.7;}
   #boot .sp{width:26px;height:26px;border:3px solid #4a361d;border-top-color:#c9954e;border-radius:50%;
             animation:spin .9s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -29,7 +30,7 @@
   #lock button{width:100%;background:#c9954e;color:#20150a;border:none;border-radius:12px;
                padding:14px;font-size:15px;font-weight:700;cursor:pointer;}
   #lock button:disabled{opacity:.5;}
-  #lockerr{font-size:12px;color:#e08b6d;min-height:16px;text-align:center;}
+  #lockerr{font-size:12px;color:var(--boot-err);min-height:16px;text-align:center;}
 </style>
 </head>
 <body>
@@ -54,7 +55,7 @@
         crossorigin="anonymous"></script>
 <script>
 (function () {
-  var BUILD = "102";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  var BUILD = "105";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
   window.__BUILD = BUILD;                 // アプリ内のフッターに出す（古い版を掴んでいないか確認用）
 
   /* テーマ（茶／緑）に合わせて、アプリの外側（ステータスバー・safe-area・オーバースクロール域）も塗る。
@@ -68,6 +69,12 @@
       if (document.body) { document.body.style.background = bg; document.body.style.color = fg; }
       var boot = document.getElementById("boot");
       if (boot) { boot.style.background = bg; boot.style.color = fg; }
+      // 起動画面（#boot）の文字色。緑の明るい背景では茶テーマ用の金色・薄茶が読めない（比1.5〜2.9）
+      var rs = document.documentElement.style;
+      rs.setProperty("--boot-eye", green ? "#1e5c41" : "#c9954e");
+      rs.setProperty("--boot-sub", green ? "#4a6b5f" : "#a98d6a");
+      rs.setProperty("--boot-err", green ? "#b4482e" : "#e08b6d");
+      rs.setProperty("--boot-fg",  green ? "#1e3932" : "#e6c98d");
       var tc = document.querySelector('meta[name="theme-color"]');
       if (tc) tc.setAttribute("content", bg);
       var sb = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
@@ -89,8 +96,8 @@
 
   function say(t) { if (msg) msg.textContent = t; }
   function fail(t) {
-    boot.innerHTML = '<div style="padding:24px;color:#e6c98d;font-size:13px;line-height:1.7;text-align:center">'
-      + '起動できませんでした<br><span style="color:#a98d6a">' + t + '</span></div>';
+    boot.innerHTML = '<div style="padding:24px;color:var(--boot-fg);font-size:13px;line-height:1.7;text-align:center">'
+      + '起動できませんでした<br><span style="color:var(--boot-sub)">' + t + '</span></div>';
   }
   function run(code) { new Function(code)(); }
 
@@ -169,9 +176,27 @@
       /* URLに版番号を付ける。付けないと古いキャッシュがそのまま返ってきて、
          中身だけ前のまま…という状態になる */
       var q = "?v=" + BUILD;
-      var res1 = await fetch("app.enc" + q);
-      var res2 = await fetch("assets.enc" + q);
-      if (!res1.ok || !res2.ok) throw new Error("データを取得できませんでした");
+      var res1, res2;
+      try {
+        res1 = await fetch("app.enc" + q);
+        res2 = await fetch("assets.enc" + q);
+      } catch (e0) {
+        throw new Error("データを取得できませんでした。電波のある場所で一度開くと、以後はオフラインでも使えます");
+      }
+      if (!res1.ok || !res2.ok) throw new Error("データを取得できませんでした（" + (res1.ok ? res2.status : res1.status) + "）");
+      /* 初回インストール時はまだ Service Worker が無く、この fetch はSWのキャッシュ保存を通らない。
+         そのため取得できたものをここで自分でオフライン用キャッシュに書いておく
+         （キャッシュ名は sw.js の CACHE と同じ規則。キーは版無しの app.enc にして、SW側の
+           ignoreSearch 照合と揃える）。SW経由のときは二重に同じものを書くだけで害は無い */
+      try {
+        if (window.caches) {
+          var c1 = res1.clone(), c2 = res2.clone();
+          caches.open("bp-cache-v" + BUILD).then(function (c) {
+            c.put("app.enc", c1).catch(function () {});
+            c.put("assets.enc", c2).catch(function () {});
+          }).catch(function () {});
+        }
+      } catch (e1) {}
       var appEnc = await res1.arrayBuffer();
       var assetsEnc = await res2.arrayBuffer();
       var salt = parseEnc(appEnc).salt;

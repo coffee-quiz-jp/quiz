@@ -1,7 +1,7 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
    v60: 新形式5種を追加。問題データ(.enc)はネット優先。
         キャッシュ優先のままだと、内容を更新しても端末に古いデータが残り続けるため */
-const CACHE = "bp-cache-v102";
+const CACHE = "bp-cache-v105";
 /* .enc はここに入れない。index.html が "app.enc?v=BUILD" で取り、
    ネット優先ハンドラが実際に取れたものをオフライン用に保存する。
    ここで版クエリ無しに取ると別URL扱いになり、更新のたび2.7MBを二重にダウンロードしていた */
@@ -35,7 +35,24 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    const old = keys.filter((k) => k !== CACHE);
+    /* 旧キャッシュを消す前に、オフライン用の .enc を新キャッシュへ移す（再ダウンロード無し）。
+       移さないと更新直後の端末は、次にオンラインで開くまで機内モードで起動できない（2周目R1）。
+       中身が1世代古くても「起動できない」よりはよく、次のオンライン起動でネット優先ハンドラが上書きする */
+    try {
+      const c = await caches.open(CACHE);
+      for (const k of old) {
+        const oc = await caches.open(k);
+        for (const req of await oc.keys()) {
+          const u = new URL(req.url);
+          if (!u.pathname.endsWith(".enc")) continue;
+          if (await c.match(req, { ignoreSearch: true })) continue;
+          const res = await oc.match(req);
+          if (res) await c.put(u.origin + u.pathname, res);
+        }
+      }
+    } catch (err) {}
+    await Promise.all(old.map((k) => caches.delete(k)));
     self.clients.claim();
   })());
 });
