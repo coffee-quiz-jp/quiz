@@ -31,6 +31,8 @@
                padding:14px;font-size:15px;font-weight:700;cursor:pointer;}
   #lock button:disabled{opacity:.5;}
   #lockerr{font-size:12px;color:var(--boot-err);min-height:16px;text-align:center;}
+  #closed{font-size:12.5px;color:var(--boot-fg);text-align:center;line-height:1.7;margin-bottom:4px;}
+  #closed:empty{display:none;}
 </style>
 </head>
 <body>
@@ -40,6 +42,7 @@
   <div class="sp" id="bootsp"></div>
   <div class="m" id="bootmsg">読み込み中…</div>
   <div id="lock">
+    <div id="closed"></div>
     <input id="passinput" type="password" placeholder="合言葉を入力" autocomplete="off"
            autocapitalize="off" autocorrect="off" spellcheck="false">
     <button id="passbtn">開く</button>
@@ -55,7 +58,7 @@
         crossorigin="anonymous"></script>
 <script>
 (function () {
-  var BUILD = "138";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  var BUILD = "141";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
   window.__BUILD = BUILD;                 // アプリ内のフッターに出す（古い版を掴んでいないか確認用）
 
   /* テーマ（茶／緑）に合わせて、アプリの外側（ステータスバー・safe-area・オーバースクロール域）も塗る。
@@ -146,9 +149,20 @@
       });
     } catch (e) {}
   }
+  /* 受験期間の最終日。翌日からは「閉じています」の案内を出す（合言葉を知っていれば今までどおり開ける）。
+     他の人を締め出すのは、この日に合言葉を変えた版を公開することで行う（緊急対応マニュアルの予備ビルド） */
+  var CLOSE_AFTER = "2026-12-09";
+  function closedNotice() {
+    try {
+      var d = new Date(), key = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+      var el = document.getElementById("closed");
+      if (el && key > CLOSE_AFTER) el.innerHTML = "FY27 の受験期間（〜12/9）は終了しました。<br>このアプリは閉じています。ご利用ありがとうございました。";
+    } catch (e) {}
+  }
   function askPass(errText) {
     sp.style.display = "none";
     say("このアプリはパスコードで保護されています");
+    closedNotice();
     lock.style.display = "flex";
     lerr.textContent = errText || "";
     input.value = ""; input.focus();
