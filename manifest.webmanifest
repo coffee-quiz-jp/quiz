@@ -1,7 +1,7 @@
 {
-  "name": "Black Apron 対策",
-  "short_name": "Black Apron",
-  "description": "ブラックエプロン模擬試験＋電車版フラッシュカード",
+  "name": "Coffee Master Passport",
+  "short_name": "CMP",
+  "description": "ブラックエプロン対策：過去問・模擬＋電車版フラッシュカード＋自動生成ドリル",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
