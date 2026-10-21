@@ -33,6 +33,7 @@
   #lockerr{font-size:12px;color:var(--boot-err);min-height:16px;text-align:center;}
   #closed{font-size:12.5px;color:var(--boot-fg);text-align:center;line-height:1.7;margin-bottom:4px;}
   #closed:empty{display:none;}
+  #notice{font-size:10.5px;color:var(--boot-sub);text-align:center;line-height:1.6;opacity:.8;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -47,6 +48,7 @@
            autocapitalize="off" autocorrect="off" spellcheck="false">
     <button id="passbtn">開く</button>
     <div id="lockerr"></div>
+    <div id="notice">利用状況（訪問数・端末の種類）を集計しています。個人は特定しません。</div>
   </div>
 </div>
 
@@ -58,7 +60,7 @@
         crossorigin="anonymous"></script>
 <script>
 (function () {
-  var BUILD = "186";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
+  var BUILD = "189";                       // 中身を更新したら大きくする（sw.js の CACHE も揃える）
   window.__BUILD = BUILD;                 // アプリ内のフッターに出す（古い版を掴んでいないか確認用）
 
   /* テーマ（茶／緑）に合わせて、アプリの外側（ステータスバー・safe-area・オーバースクロール域）も塗る。
@@ -260,5 +262,7 @@
   }
 })();
 </script>
+<!-- 利用状況の集計（Cloudflare Web Analytics。Cookie を使わず、個人は特定しない。2026-10-21 本人の依頼で導入。token は公開して使う値） -->
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "6122bcdaf8e14d54a3f5e038e1652d41"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
