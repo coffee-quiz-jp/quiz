@@ -1,7 +1,7 @@
 /* Black Apron 対策 — オフライン用サービスワーカー
    v60: 新形式5種を追加。問題データ(.enc)はネット優先。
         キャッシュ優先のままだと、内容を更新しても端末に古いデータが残り続けるため */
-const CACHE = "bp-cache-v183";
+const CACHE = "bp-cache-v186";
 /* .enc はここに入れない。index.html が "app.enc?v=BUILD" で取り、
    ネット優先ハンドラが実際に取れたものをオフライン用に保存する。
    ここで版クエリ無しに取ると別URL扱いになり、更新のたび2.7MBを二重にダウンロードしていた */
@@ -64,6 +64,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   /* Access の認証まわりには一切触らない */
   if (url.pathname.startsWith("/cdn-cgi/") || url.hostname.endsWith("cloudflareaccess.com")) return;
+  /* 利用状況の集計（Cloudflare Web Analytics）のスクリプトは保存せず、毎回そのまま取りに行く */
+  if (url.hostname.endsWith("cloudflareinsights.com")) return;
 
   /* ページ本体はネット優先。リダイレクトはブラウザに委ねる */
   if (req.mode === "navigate") {
